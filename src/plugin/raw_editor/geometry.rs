@@ -54,7 +54,7 @@ impl SourceRect {
     };
     /// Portamento control bounds.
     pub(super) const PORTAMENTO: Self = Self {
-        x: 21.0,
+        x: 19.0,
         y: 448.0,
         width: 50.0,
         height: 50.0,
@@ -75,7 +75,7 @@ impl SourceRect {
     };
     /// Voice control bounds.
     pub(super) const VOICE: Self = Self {
-        x: 293.0,
+        x: 291.0,
         y: 447.0,
         width: 50.0,
         height: 50.0,

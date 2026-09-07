@@ -7,6 +7,7 @@ use crate::{
 
 use super::{
     animation::animation_frame,
+    artwork::Artwork,
     geometry::{HitTarget, SourceRect, hit_target, linear_value, pad_position, rotary_value},
     interaction::{PointerPhase, pad_gesture},
 };
@@ -89,14 +90,14 @@ fn asset_editor_geometry_owns_hit_testing_and_parameter_edits() {
 
 #[test]
 fn rotary_hit_regions_match_visible_controls_and_drag_axes_match_contract() {
-    assert_eq!(hit_target((46.0, 473.0)), Some(HitTarget::Portamento));
-    assert_eq!(hit_target((21.0, 448.0)), None);
-    assert_eq!(hit_target((70.9, 497.9)), None);
-    assert_eq!(hit_target((20.9, 448.0)), None);
-    assert_eq!(hit_target((318.0, 472.0)), Some(HitTarget::Voice));
-    assert_eq!(hit_target((293.0, 447.0)), None);
-    assert_eq!(hit_target((342.9, 496.9)), None);
-    assert_eq!(hit_target((343.1, 447.0)), None);
+    assert_eq!(hit_target((44.0, 473.0)), Some(HitTarget::Portamento));
+    assert_eq!(hit_target((19.0, 448.0)), None);
+    assert_eq!(hit_target((68.9, 497.9)), None);
+    assert_eq!(hit_target((18.9, 448.0)), None);
+    assert_eq!(hit_target((316.0, 472.0)), Some(HitTarget::Voice));
+    assert_eq!(hit_target((291.0, 447.0)), None);
+    assert_eq!(hit_target((340.9, 496.9)), None);
+    assert_eq!(hit_target((341.1, 447.0)), None);
 
     let horizontal = rotary_value(0.5, (25.0, 0.0));
     let vertical_up = rotary_value(0.5, (0.0, -25.0));
@@ -104,4 +105,45 @@ fn rotary_hit_regions_match_visible_controls_and_drag_axes_match_contract() {
     assert!((horizontal - 0.6).abs() < 0.001);
     assert!((vertical_up - horizontal).abs() < 0.001);
     assert!((vertical_down - 0.4).abs() < 0.001);
+}
+
+#[test]
+fn knob_strip_background_anchors_align_with_panel_in_every_frame() {
+    use num_traits::ToPrimitive;
+
+    let decode = |bytes| {
+        qoi::Decoder::new(bytes)
+            .expect("valid artwork")
+            .with_channels(qoi::Channels::Rgba)
+            .decode_to_vec()
+            .expect("decoded artwork")
+    };
+    let artwork = Artwork::EMBEDDED;
+    let panel = decode(artwork.surface.control_panel);
+    // Fixed background corners, outside the rotating dial, must line up with
+    // the panel underneath rather than repeat it two pixels to the right.
+    for (bytes, bounds, (x, y)) in [
+        (
+            artwork.controls.knob_strips[0],
+            SourceRect::PORTAMENTO,
+            (49, 49),
+        ),
+        (artwork.controls.knob_strips[1], SourceRect::VOICE, (0, 0)),
+    ] {
+        let strip = decode(bytes);
+        let panel_x = bounds.x.to_usize().expect("integer artwork x") + x;
+        let panel_y = (bounds.y - SourceRect::CONTROL_PANEL.y)
+            .to_usize()
+            .expect("integer panel y")
+            + y;
+        let panel_offset = (panel_y * 360 + panel_x) * 4;
+        for frame in 0..60 {
+            let strip_offset = ((frame * 50 + y) * 50 + x) * 4;
+            assert_eq!(
+                &strip[strip_offset..strip_offset + 4],
+                &panel[panel_offset..panel_offset + 4],
+                "knob at {bounds:?}, frame {frame}",
+            );
+        }
+    }
 }
