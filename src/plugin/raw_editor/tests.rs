@@ -108,6 +108,44 @@ fn rotary_hit_regions_match_visible_controls_and_drag_axes_match_contract() {
 }
 
 #[test]
+fn monk_static_border_aligns_with_panel_in_every_frame() {
+    use num_traits::ToPrimitive;
+
+    let decode = |bytes| {
+        qoi::Decoder::new(bytes)
+            .expect("valid artwork")
+            .with_channels(qoi::Channels::Rgba)
+            .decode_to_vec()
+            .expect("decoded artwork")
+    };
+    let artwork = Artwork::EMBEDDED;
+    let sheet = decode(artwork.surface.scene.monk_sprite_sheet);
+    let panel = decode(artwork.surface.control_panel);
+    let monk_x = SourceRect::MONK.x.to_usize().expect("integer monk x");
+    let monk_y = SourceRect::MONK.y.to_usize().expect("integer monk y");
+    let panel_y = SourceRect::CONTROL_PANEL
+        .y
+        .to_usize()
+        .expect("integer panel y");
+
+    // These fixed background/plaque pixels occur in both layers. Their
+    // registration must survive every pose, not shift at the panel seam.
+    for (x, y) in [(30, 290), (310, 294), (102, 299), (282, 309)] {
+        let panel_offset = ((y - panel_y) * 360 + x) * 4;
+        for frame in 0..30 {
+            let sheet_x = (frame / 6) * 314 + x - monk_x;
+            let sheet_y = (frame % 6) * 311 + y - monk_y;
+            let sheet_offset = (sheet_y * 1570 + sheet_x) * 4;
+            assert_eq!(
+                &sheet[sheet_offset..sheet_offset + 4],
+                &panel[panel_offset..panel_offset + 4],
+                "monk frame {frame}, panel anchor ({x}, {y})",
+            );
+        }
+    }
+}
+
+#[test]
 fn knob_strip_background_anchors_align_with_panel_in_every_frame() {
     use num_traits::ToPrimitive;
 

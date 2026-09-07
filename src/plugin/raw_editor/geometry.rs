@@ -31,9 +31,9 @@ impl SourceRect {
         width: 360.0,
         height: 311.0,
     };
-    /// Animated monk bounds.
+    /// Animated monk bounds, aligned with the static panel pixels in each frame.
     pub(super) const MONK: Self = Self {
-        x: 22.0,
+        x: 20.0,
         y: 5.0,
         width: 314.0,
         height: 311.0,
