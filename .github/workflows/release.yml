@@ -1,0 +1,197 @@
+name: Release
+
+"on":
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag at the selected main commit (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  metadata:
+    if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main'
+    name: Validate release tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Match existing tag to main commit and Cargo version
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 scripts/release.py metadata
+
+  native:
+    if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main'
+    name: ${{ matrix.system }} (${{ matrix.arch }})
+    needs: metadata
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            system: windows
+            arch: x86_64
+          - runner: ubuntu-24.04
+            system: linux
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            system: linux
+            arch: aarch64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev \
+            libxcb1-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev \
+            libasound2-dev libvulkan1
+      - name: Install pinned tools
+        run: |
+          toolchain="$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')"
+          rustup toolchain install "$toolchain" --profile minimal --component rustfmt,clippy
+          cargo install cargo-truce --version 6.3.0 --locked
+          cargo fetch --locked
+      - name: Test
+        run: |
+          cargo fmt --all -- --check
+          cargo test --locked --no-default-features --features clap,vst3,lv2
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Build all native formats
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: |
+          cargo truce build -p xymonk --clap --vst3 --lv2 --target-cpu baseline
+          git diff --exit-code -- Cargo.lock
+      - name: Archive bundles
+        env:
+          RELEASE_SYSTEM: ${{ matrix.system }}
+          RELEASE_ARCH: ${{ matrix.arch }}
+        run: python3 scripts/release.py archive --system "$RELEASE_SYSTEM" --arch "$RELEASE_ARCH"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.system }}-${{ matrix.arch }}
+          path: target/release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main'
+    name: macOS (Apple Silicon + Intel)
+    needs: metadata
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned tools
+        run: |
+          toolchain="$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')"
+          rustup toolchain install "$toolchain" --profile minimal --component rustfmt,clippy
+          rustup target add --toolchain "$toolchain" aarch64-apple-darwin x86_64-apple-darwin
+          cargo install cargo-truce --version 6.3.0 --locked
+          cargo fetch --locked
+          xcodebuild -version
+      - name: Test
+        run: |
+          cargo fmt --all -- --check
+          cargo test --locked --all-features
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Build all universal formats
+        env:
+          CARGO_NET_OFFLINE: "true"
+          TRUCE_SIGNING_IDENTITY: "-"
+        run: |
+          python3 scripts/auv3.py --universal-package
+          git diff --exit-code -- Cargo.lock
+      - name: Set up temporary signing keychain
+        env:
+          DEVELOPER_ID_APPLICATION_CERT_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
+          CERTIFICATE_SECRET: ${{ secrets.CERTIFICATE_SECRET }}
+          KEYCHAIN_SECRET: ${{ secrets.KEYCHAIN_SECRET }}
+          NOTARIZE_APPLE_ID: ${{ secrets.NOTARIZE_APPLE_ID }}
+          NOTARIZE_PASSWORD: ${{ secrets.NOTARIZE_PASSWORD }}
+        run: bash scripts/release-macos.sh setup
+      - name: Sign, notarize, and staple universal DMG
+        run: bash scripts/release-macos.sh package
+      - name: Delete temporary signing material
+        if: always()
+        run: bash scripts/release-macos.sh cleanup
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-macos-universal
+          path: target/release-artifacts/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main'
+    name: Create draft release
+    needs: [metadata, native, macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - name: Check complete artifact set and write checksums
+        working-directory: release
+        env:
+          RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          files=(
+            "DelayLama-$RELEASE_VERSION-windows-x86_64.zip"
+            "DelayLama-$RELEASE_VERSION-linux-x86_64.tar.gz"
+            "DelayLama-$RELEASE_VERSION-linux-aarch64.tar.gz"
+            "DelayLama-$RELEASE_VERSION-macos-universal.dmg"
+          )
+          for file in "${files[@]}"; do test -s "$file"; done
+          actual=(*)
+          test "${#actual[@]}" -eq "${#files[@]}"
+          sha256sum -- "${files[@]}" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Create draft without changing the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          args=(--verify-tag --draft --generate-notes --title "Delay Lama $RELEASE_TAG")
+          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" "${args[@]}" release/*

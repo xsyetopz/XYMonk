@@ -3,8 +3,6 @@ name: CI
 "on":
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +14,7 @@ concurrency:
 
 jobs:
   rust:
+    if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main'
     name: Rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -26,9 +25,27 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        shell: bash
+        run: |
+          toolchain="$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')"
+          rustup toolchain install "$toolchain" --profile minimal --component rustfmt,clippy
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libx11-dev libx11-xcb-dev \
+            libxcb1-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev \
+            libasound2-dev libvulkan1
       - name: Test package
-        run: cargo test
+        run: cargo test --locked
+      - name: Test release tooling
+        run: python3 -m unittest discover -s scripts -p "test_*.py"
       - name: Build package
-        run: cargo build --release
+        run: cargo build --release --locked
