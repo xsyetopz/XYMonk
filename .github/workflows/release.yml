@@ -120,6 +120,9 @@ jobs:
           toolchain="$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')"
           rustup toolchain install "$toolchain" --profile minimal --component rustfmt,clippy
           rustup target add --toolchain "$toolchain" aarch64-apple-darwin x86_64-apple-darwin
+          rustup component add --toolchain "$toolchain" llvm-tools-preview
+          sysroot="$(rustup run "$toolchain" rustc --print sysroot)"
+          "$sysroot/lib/rustlib/aarch64-apple-darwin/bin/rust-objcopy" --version
           cargo install cargo-truce --version 6.3.0 --locked
           cargo fetch --locked
           xcodebuild -version
@@ -128,13 +131,6 @@ jobs:
           cargo fmt --all -- --check
           cargo test --locked --all-features
           python3 -m unittest discover -s scripts -p 'test_*.py'
-      - name: Build all universal formats
-        env:
-          CARGO_NET_OFFLINE: "true"
-          TRUCE_SIGNING_IDENTITY: "-"
-        run: |
-          python3 scripts/auv3.py --universal-package
-          git diff --exit-code -- Cargo.lock
       - name: Set up temporary signing keychain
         env:
           DEVELOPER_ID_APPLICATION_CERT_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_CERT_BASE64 }}
@@ -143,6 +139,13 @@ jobs:
           NOTARIZE_APPLE_ID: ${{ secrets.NOTARIZE_APPLE_ID }}
           NOTARIZE_PASSWORD: ${{ secrets.NOTARIZE_PASSWORD }}
         run: bash scripts/release-macos.sh setup
+      - name: Build all universal formats
+        env:
+          CARGO_NET_OFFLINE: "true"
+        run: |
+          export TRUCE_SIGNING_IDENTITY="$XYMONK_RELEASE_SIGNING_IDENTITY"
+          python3 scripts/auv3.py --universal-package
+          git diff --exit-code -- Cargo.lock
       - name: Sign, notarize, and staple universal DMG
         run: bash scripts/release-macos.sh package
       - name: Delete temporary signing material
