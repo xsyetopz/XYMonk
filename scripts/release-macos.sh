@@ -170,7 +170,7 @@ verify_tree() {
     grep -q '^Timestamp=' <<<"$details" || die "missing secure timestamp: $file"
     grep -q 'flags=.*(runtime)' <<<"$details" || die "missing hardened runtime: $file"
     grep -Fxq "TeamIdentifier=$TEAM_ID" <<<"$details" || die "unexpected signing team: $file"
-    lipo -verify_arch arm64 x86_64 "$file" >/dev/null 2>&1 \
+    lipo "$file" -verify_arch arm64 x86_64 >/dev/null 2>&1 \
       || die "Mach-O is not universal: $file"
   done < <(mach_o_files "$root")
 }

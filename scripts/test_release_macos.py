@@ -29,6 +29,13 @@ if name == "security":
             sys.exit(1)
 elif name == "file":
     print("Mach-O universal binary" if pathlib.Path(args[-1]).name == "binary" else "data")
+elif name == "lipo":
+    # Apple's -verify_arch consumes every remaining argument as an arch;
+    # the input path must precede it, including paths containing spaces.
+    if len(args) != 4 or args[1:] != ["-verify_arch", "arm64", "x86_64"]:
+        sys.exit("invalid lipo architecture-check argument order")
+    if not pathlib.Path(args[0]).is_file():
+        sys.exit("missing lipo input")
 elif name == "codesign" and "-dv" in args:
     print("Authority=Developer ID Application: Fixture (TESTTEAM01)")
     print("TeamIdentifier=TESTTEAM01\nTimestamp=fixture\nCodeDirectory flags=0x10000(runtime)")
