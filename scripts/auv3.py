@@ -149,6 +149,7 @@ def copy_universal_bundles() -> None:
         "Delay Lama.vst3",
         "Delay Lama.component",
         "Delay Lama.app",
+        "delay-lama.lv2",
     ]:
         shutil.copytree(staging / name, output / name, symlinks=True)
 
@@ -167,6 +168,7 @@ def main() -> None:
         "cargo",
         "run",
         "--release",
+        "--locked",
         "--manifest-path",
         str(patched_tool / "Cargo.toml"),
         "--",
@@ -178,7 +180,7 @@ def main() -> None:
                 "-p",
                 "xymonk",
                 "--formats",
-                "clap,vst3,au2,au3",
+                "clap,vst3,lv2,au2,au3",
                 "--universal",
                 "--no-notarize",
                 "--target-cpu",

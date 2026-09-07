@@ -1,5 +1,11 @@
 set shell := ["sh", "-cu"]
 
+plugin_crate := "xymonk"
+plugin_name := "Delay Lama"
+plugin_vendor := "AudioNerdz"
+temporary_prefix := "xymonk"
+native_formats := if os() == "macos" { "--clap --vst3 --lv2 --au2" } else { "--clap --vst3 --lv2" }
+
 auv3_host_bundle := "target/bundles/Delay Lama.app"
 auv3_extension_bundle := "target/bundles/Delay Lama.app/Contents/PlugIns/AUExt.appex"
 auv3_extension_identifier := "com.audionerdz.delaylama.v3.ext"
@@ -16,8 +22,51 @@ rust-test:
 rust-build:
     cargo build --release
 
-rust-bundles:
-    cargo truce build --clap --vst3 --au2 -p xymonk
+[script]
+rust-bundles format="all":
+    #!/bin/sh
+    set -eu
+    format={{quote(format)}}
+    case "$format" in
+        all) set -- {{native_formats}} ;;
+        clap|vst3|lv2) set -- "--$format" ;;
+        au2) test '{{os()}}' = macos || { echo 'AUv2 requires macOS.' >&2; exit 1; }; set -- --au2 ;;
+        *) echo 'Format must be all, clap, vst3, lv2, or au2.' >&2; exit 1 ;;
+    esac
+    cargo truce build "$@" -p '{{plugin_crate}}' --target-cpu baseline
+
+[script]
+rust-install format="all":
+    #!/bin/sh
+    set -eu
+    format={{quote(format)}}
+    case "$format" in
+        all) set -- {{native_formats}} ;;
+        clap|vst3|lv2) set -- "--$format" ;;
+        au2) test '{{os()}}' = macos || { echo 'AUv2 requires macOS.' >&2; exit 1; }; set -- --au2 ;;
+        *) echo 'Format must be all, clap, vst3, lv2, or au2.' >&2; exit 1 ;;
+    esac
+    if test -f .env; then
+        set -a
+        # shellcheck disable=SC1091
+        . ./.env
+        set +a
+    fi
+    cargo truce install "$@" -p '{{plugin_crate}}' --user --target-cpu baseline
+    if test '{{os()}}' = macos && { test "$format" = all || test "$format" = vst3; }; then
+        presets_dir="${HOME}/Library/Audio/Presets/{{plugin_vendor}}/{{plugin_name}}"
+        vst3_bundle="${HOME}/Library/Audio/Plug-Ins/VST3/{{plugin_name}}.vst3"
+        vst3_resources="${vst3_bundle}/Contents/Resources/Presets"
+        if test -d "$presets_dir"; then
+            mkdir -p "$vst3_resources"
+            find "$presets_dir" -name '*.vstpreset' -exec cp {} "$vst3_resources/" \;
+            identity="${TRUCE_SIGNING_IDENTITY:--}"
+            codesign --force --sign "$identity" --timestamp=none "$vst3_bundle"
+            printf 'VST3 presets: %s\n' "$presets_dir"
+        fi
+        codesign --verify --deep --strict "$vst3_bundle"
+        printf 'VST3 bundle:  %s\n' "$vst3_bundle"
+    fi
 
 build-auv3:
     python3 scripts/auv3.py
@@ -69,13 +118,13 @@ install-auv3-dev: sign-auv3-dev ensure-logic-is-closed
     set -eu
     install_root="${AUV3_INSTALL_ROOT:-/Applications}"
     source_app="$(pwd -P)/{{auv3_host_bundle}}"
-    installed_app="$install_root/Delay Lama.app"
+    installed_app="$install_root/{{plugin_name}}.app"
     installed_extension="$installed_app/Contents/PlugIns/AUExt.appex"
     test -d "$source_app"
     mkdir -p "$install_root"
     if test -e "$installed_app"; then
-        backup_root="$(mktemp -d "${TMPDIR:-/tmp}/xymonk-auv3.XXXXXX")"
-        mv "$installed_app" "$backup_root/Delay Lama.app"
+        backup_root="$(mktemp -d "${TMPDIR:-/tmp}/{{temporary_prefix}}-auv3.XXXXXX")"
+        mv "$installed_app" "$backup_root/{{plugin_name}}.app"
     fi
     ditto "$source_app" "$installed_app"
     codesign --verify --deep --strict --verbose=2 "$installed_app"
