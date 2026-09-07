@@ -96,4 +96,4 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Participa
 
 ## License
 
-AudioNerdz distributed Delay Lama as freeware. Redistribution requires permission from the relevant code, name, and artwork rights holders.
+This software is provided free of charge and may be distributed freely, as long as all the files are distributed along with the plugin file. It may not be sold or included in any commercial package, nor used as part of any commercial promotion. Contact AudioNerdz if you wish to include it on a CD collection.
