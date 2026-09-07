@@ -75,9 +75,9 @@ class SecretTests(unittest.TestCase):
             patch("builtins.input", return_value=setup.REPOSITORY),
             patch.object(setup, "run", side_effect=["", setup.SetupError("failed")]),
             contextlib.redirect_stdout(io.StringIO()),
+            self.assertRaises(setup.SetupError) as raised,
         ):
-            with self.assertRaises(setup.SetupError) as raised:
-                setup.apply(values)
+            setup.apply(values)
         self.assertIn(setup.NAMES[0], str(raised.exception))
         self.assertNotIn("private-value", str(raised.exception))
 

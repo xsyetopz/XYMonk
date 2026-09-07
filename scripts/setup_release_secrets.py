@@ -27,7 +27,9 @@ class SetupError(Exception):
 
 
 def run(arguments, **kwargs):
-    result = subprocess.run(arguments, capture_output=True, text=True, **kwargs)
+    result = subprocess.run(
+        arguments, capture_output=True, text=True, check=False, **kwargs
+    )
     if result.returncode:
         raise SetupError(
             f"{arguments[0]} operation failed; check authentication and access"
@@ -60,11 +62,13 @@ def guard(root):
         ["git", "ls-files", "--error-unmatch", ".env.release"],
         cwd=root,
         capture_output=True,
+        check=False,
     )
     ignored = subprocess.run(
         ["git", "check-ignore", "--quiet", ".env.release"],
         cwd=root,
         capture_output=True,
+        check=False,
     )
     if tracked.returncode == 0 or ignored.returncode != 0:
         raise SetupError(".env.release must be ignored and untracked")
@@ -147,9 +151,10 @@ def apply(values):
 
 
 def configure(path):
-    if path.exists() or path.is_symlink():
-        if input("Replace existing .env.release? Type yes: ") != "yes":
-            raise SetupError("Configuration cancelled")
+    if (path.exists() or path.is_symlink()) and input(
+        "Replace existing .env.release? Type yes: "
+    ) != "yes":
+        raise SetupError("Configuration cancelled")
     certificate = Path(
         input("Developer ID Application .p12 path: ").strip()
     ).expanduser()

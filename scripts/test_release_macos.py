@@ -104,7 +104,7 @@ class MacReleaseTests(unittest.TestCase):
                     "FAKE_LOG": str(log),
                 }
 
-                def invoke(command):
+                def invoke(command, helper=helper, env=env):
                     return subprocess.run(
                         ["bash", str(helper), command],
                         env=env,
