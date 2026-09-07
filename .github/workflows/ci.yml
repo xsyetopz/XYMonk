@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14, windows-2022]
+        os: [ubuntu-24.04, macos-14, windows-2022, windows-11-arm]
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -49,3 +49,21 @@ jobs:
         run: python3 -m unittest discover -s scripts -p "test_*.py"
       - name: Build package
         run: cargo build --release --locked
+
+  ios:
+    if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main'
+    name: iOS (device + simulator)
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install Rust targets
+        run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+      - name: Check AUv3 targets without signing credentials
+        run: |
+          cargo check --locked --target aarch64-apple-ios --no-default-features --features au
+          cargo check --locked --target aarch64-apple-ios-sim --no-default-features --features au

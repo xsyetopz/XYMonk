@@ -112,6 +112,7 @@ def archive(root: Path, system: str, arch: str) -> Path:
     """Copy only the expected bundles and documentation into one archive."""
     if (system, arch) not in {
         ("windows", "x86_64"),
+        ("windows", "aarch64"),
         ("linux", "x86_64"),
         ("linux", "aarch64"),
     }:
@@ -159,14 +160,15 @@ def main() -> None:
     pack.add_argument("--arch", choices=("x86_64", "aarch64"), required=True)
     args = parser.parse_args()
     root = Path.cwd()
-    if args.command == "metadata":
-        metadata = release_metadata(root, dict(os.environ))
-        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
-            output.writelines(f"{key}={value}\n" for key, value in metadata.items())
-    elif args.command == "create-tag":
-        create_tag(root, dict(os.environ))
-    else:
-        print(archive(root, args.system, args.arch))
+    match args.command:
+        case "metadata":
+            metadata = release_metadata(root, dict(os.environ))
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+                output.writelines(f"{key}={value}\n" for key, value in metadata.items())
+        case "create-tag":
+            create_tag(root, dict(os.environ))
+        case _:
+            print(archive(root, args.system, args.arch))
 
 
 if __name__ == "__main__":

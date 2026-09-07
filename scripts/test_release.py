@@ -159,6 +159,7 @@ class ReleaseTests(unittest.TestCase):
             (source / "unrelated-debug-output").write_bytes(b"must not ship")
             for system, arch in (
                 ("windows", "x86_64"),
+                ("windows", "aarch64"),
                 ("linux", "x86_64"),
                 ("linux", "aarch64"),
             ):

@@ -7,6 +7,12 @@ name: Release
         description: Version tag to create at the selected main commit (for example v0.1.0)
         required: true
         type: string
+      ios_distribution:
+        description: Optional signed iOS IPA (no upload to Apple)
+        required: true
+        default: none
+        type: choice
+        options: [none, adhoc, testflight]
 
 permissions:
   contents: read
@@ -53,6 +59,9 @@ jobs:
           - runner: windows-2022
             system: windows
             arch: x86_64
+          - runner: windows-11-arm
+            system: windows
+            arch: aarch64
           - runner: ubuntu-24.04
             system: linux
             arch: x86_64
@@ -158,10 +167,51 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  ios:
+    if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main' && inputs.ios_distribution != 'none'
+    name: iOS (${{ inputs.ios_distribution }})
+    needs: metadata
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned tools
+        run: |
+          toolchain="$(python3 -c 'import tomllib; print(tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]["channel"])')"
+          rustup toolchain install "$toolchain" --profile minimal
+          rustup target add --toolchain "$toolchain" aarch64-apple-ios aarch64-apple-ios-sim
+          cargo install cargo-truce --version 6.3.0 --locked
+          cargo fetch --locked
+      - name: Check simulator target
+        run: cargo check --locked --target aarch64-apple-ios-sim --no-default-features --features au
+      - name: Build signed device IPA
+        env:
+          CARGO_NET_OFFLINE: "true"
+          IOS_DISTRIBUTION: ${{ inputs.ios_distribution }}
+          IOS_DISTRIBUTION_CERT_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERT_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_ADHOC_APP_PROFILE_BASE64: ${{ secrets.IOS_ADHOC_APP_PROFILE_BASE64 }}
+          IOS_ADHOC_EXTENSION_PROFILE_BASE64: ${{ secrets.IOS_ADHOC_EXTENSION_PROFILE_BASE64 }}
+          IOS_TESTFLIGHT_APP_PROFILE_BASE64: ${{ secrets.IOS_TESTFLIGHT_APP_PROFILE_BASE64 }}
+          IOS_TESTFLIGHT_EXTENSION_PROFILE_BASE64: ${{ secrets.IOS_TESTFLIGHT_EXTENSION_PROFILE_BASE64 }}
+        run: |
+          python3 scripts/release_ios.py "$IOS_DISTRIBUTION"
+          git diff --exit-code -- Cargo.lock
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-ios
+          path: target/release-artifacts/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+
   release:
-    if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main'
+    if: always() && !cancelled() && github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main' && needs.metadata.result == 'success' && needs.native.result == 'success' && needs.macos.result == 'success' && (needs.ios.result == 'success' || (inputs.ios_distribution == 'none' && needs.ios.result == 'skipped'))
     name: Create draft release
-    needs: [metadata, native, macos]
+    needs: [metadata, native, macos, ios]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -180,13 +230,18 @@ jobs:
         working-directory: release
         env:
           RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+          IOS_DISTRIBUTION: ${{ inputs.ios_distribution }}
         run: |
           files=(
             "DelayLama-$RELEASE_VERSION-windows-x86_64.zip"
+            "DelayLama-$RELEASE_VERSION-windows-aarch64.zip"
             "DelayLama-$RELEASE_VERSION-linux-x86_64.tar.gz"
             "DelayLama-$RELEASE_VERSION-linux-aarch64.tar.gz"
             "DelayLama-$RELEASE_VERSION-macos-universal.dmg"
           )
+          if [[ "$IOS_DISTRIBUTION" != none ]]; then
+            files+=("DelayLama-$RELEASE_VERSION-ios-$IOS_DISTRIBUTION.ipa")
+          fi
           for file in "${files[@]}"; do test -s "$file"; done
           actual=(*)
           test "${#actual[@]}" -eq "${#files[@]}"
