@@ -20,7 +20,7 @@ VERSION = re.compile(
 
 
 def release_version(tag: str, package_version: str) -> str:
-    """Require an existing SemVer tag to match the version shipped in Cargo."""
+    """Require a SemVer tag to match the version shipped in Cargo."""
     version = tag.removeprefix("v")
     if not VERSION.fullmatch(version) or version != package_version:
         raise ValueError("release tag must match Cargo.toml (optional v prefix)")
@@ -28,7 +28,7 @@ def release_version(tag: str, package_version: str) -> str:
 
 
 def release_metadata(root: Path, environment: dict[str, str]) -> dict[str, str]:
-    """Bind a main-only release run to one existing tag and exact commit."""
+    """Validate the requested version and bind the run to its main commit."""
     if (
         environment.get("GITHUB_REPOSITORY") != "xsyetopz/XYMonk"
         or environment.get("GITHUB_REF") != "refs/heads/main"
@@ -39,20 +39,73 @@ def release_metadata(root: Path, environment: dict[str, str]) -> dict[str, str]:
     version = release_version(
         tag, tomllib.loads((root / "Cargo.toml").read_text())["package"]["version"]
     )
-    commits = []
-    for ref in ("HEAD", f"refs/tags/{tag}^{{commit}}"):
-        commits.append(
-            subprocess.run(
-                ["git", "rev-parse", "--verify", ref],
-                cwd=root,
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-        )
-    if commits[0] != commits[1] or commits[0] != environment.get("GITHUB_SHA"):
-        raise ValueError("release tag must point to the selected main commit")
+    commit = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if commit != environment.get("GITHUB_SHA"):
+        raise ValueError("checkout must match the selected main commit")
     return {"tag": tag, "version": version, "prerelease": str("-" in version).lower()}
+
+
+def create_tag(root: Path, environment: dict[str, str]) -> None:
+    """Create a missing tag; never move or delete an existing reference."""
+    metadata = release_metadata(root, environment)
+    ref = f"refs/tags/{metadata['tag']}"
+    commit = environment["GITHUB_SHA"]
+
+    def remote_commit():
+        output = subprocess.run(
+            [
+                "git",
+                "ls-remote",
+                "https://github.com/xsyetopz/XYMonk.git",
+                ref,
+                f"{ref}^{{}}",
+            ],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        refs = {}
+        for line in output.splitlines():
+            sha, name = line.split()
+            refs[name] = sha
+        # Annotated tags resolve through their peeled commit; lightweight tags
+        # point directly at the commit.
+        return refs.get(f"{ref}^{{}}", refs.get(ref))
+
+    existing = remote_commit()
+    if existing is None:
+        subprocess.run(
+            [
+                "gh",
+                "api",
+                "--hostname",
+                "github.com",
+                "--method",
+                "POST",
+                "/repos/xsyetopz/XYMonk/git/refs",
+                "-f",
+                f"ref={ref}",
+                "-f",
+                f"sha={commit}",
+            ],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        existing = remote_commit()
+    if existing != commit:
+        raise ValueError(
+            f"tag {metadata['tag']} does not point to selected main commit {commit}; refusing to overwrite it"
+        )
+    print(f"Tag {metadata['tag']} verified at {commit}")
 
 
 def archive(root: Path, system: str, arch: str) -> Path:
@@ -100,6 +153,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("metadata")
+    subcommands.add_parser("create-tag")
     pack = subcommands.add_parser("archive")
     pack.add_argument("--system", choices=("windows", "linux"), required=True)
     pack.add_argument("--arch", choices=("x86_64", "aarch64"), required=True)
@@ -109,6 +163,8 @@ def main() -> None:
         metadata = release_metadata(root, dict(os.environ))
         with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
             output.writelines(f"{key}={value}\n" for key, value in metadata.items())
+    elif args.command == "create-tag":
+        create_tag(root, dict(os.environ))
     else:
         print(archive(root, args.system, args.arch))
 

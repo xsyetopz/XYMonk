@@ -68,20 +68,6 @@ The second command builds all five formats for Apple Silicon and Intel in `targe
 
 For development AUv3 registration, install [just](https://github.com/casey/just), set `AUV3_SIGNING_IDENTITY` to an Apple Development certificate, and run `just install-auv3-dev` followed by `just verify-auv3-registration`. See the [justfile](justfile) for registration and removal commands.
 
-## Releases
-
-CI and releases run only in `xsyetopz/XYMonk` on `main`. To prepare macOS signing, install GitHub CLI, authenticate with repository-secret access, and run from `main`:
-
-```sh
-python3 scripts/setup_release_secrets.py configure
-python3 scripts/setup_release_secrets.py apply
-python3 scripts/setup_release_secrets.py status
-```
-
-`configure` asks for a Developer ID Application `.p12`, its password, an Apple ID, and an app-specific password. It generates a keychain password and saves all five values in ignored, private `.env.release`. `apply` requires confirmation before setting repository secrets; `status` checks names, never retrieves values. Do not share or commit this file.
-
-Run the **Release** workflow manually from `main`, supplying an existing version tag (for example `v0.1.0`). Its version must match `Cargo.toml`, and it must point to the selected `main` commit. The workflow builds every format in the table, notarizes the macOS DMG, and creates a draft release with checksums. Tag pushes do not trigger releases.
-
 ## Test
 
 ```sh

@@ -4,7 +4,7 @@ name: Release
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag at the selected main commit (for example v0.1.0)
+        description: Version tag to create at the selected main commit (for example v0.1.0)
         required: true
         type: string
 
@@ -34,7 +34,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Match existing tag to main commit and Cargo version
+      - name: Validate requested version and main commit
         id: release
         env:
           RELEASE_TAG: ${{ inputs.tag }}
@@ -164,6 +164,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: release-*
@@ -185,7 +189,12 @@ jobs:
           test "${#actual[@]}" -eq "${#files[@]}"
           sha256sum -- "${files[@]}" > SHA256SUMS
           sha256sum --check SHA256SUMS
-      - name: Create draft without changing the release tag
+      - name: Create or verify release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: python3 scripts/release.py create-tag
+      - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

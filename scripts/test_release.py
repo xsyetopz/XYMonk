@@ -1,5 +1,6 @@
 """Release metadata and native archive contracts; no signing or network access."""
 
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -8,11 +9,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from release import BUNDLES, archive, release_metadata, release_version
+from release import BUNDLES, archive, create_tag, release_metadata, release_version
 
 
 class ReleaseTests(unittest.TestCase):
-    def test_metadata_requires_canonical_main_and_exact_existing_tag(self):
+    def test_metadata_requires_canonical_main_and_exact_checkout_not_existing_tag(self):
         environment = {
             "GITHUB_REPOSITORY": "xsyetopz/XYMonk",
             "GITHUB_REF": "refs/heads/main",
@@ -26,8 +27,12 @@ class ReleaseTests(unittest.TestCase):
             with patch(
                 "release.subprocess.run",
                 return_value=SimpleNamespace(stdout="selected-commit\n"),
-            ):
+            ) as run:
                 self.assertEqual(release_metadata(root, environment)["tag"], "v0.1.0")
+                self.assertEqual(run.call_count, 1)
+                self.assertEqual(
+                    run.call_args.args[0], ["git", "rev-parse", "--verify", "HEAD"]
+                )
             for key, value in (
                 ("GITHUB_REPOSITORY", "fork/XYMonk"),
                 ("GITHUB_REF", "refs/tags/v0.1.0"),
@@ -42,14 +47,92 @@ class ReleaseTests(unittest.TestCase):
             with (
                 patch(
                     "release.subprocess.run",
-                    side_effect=[
-                        SimpleNamespace(stdout="selected-commit"),
-                        SimpleNamespace(stdout="older-commit"),
-                    ],
+                    return_value=SimpleNamespace(stdout="older-commit"),
                 ),
                 self.assertRaisesRegex(ValueError, "selected main commit"),
             ):
                 release_metadata(root, environment)
+
+    def test_tag_creation_missing_matching_conflicting_and_failed_lookup(self):
+        environment = {
+            "GITHUB_REPOSITORY": "xsyetopz/XYMonk",
+            "GITHUB_REF": "refs/heads/main",
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "RELEASE_TAG": "v0.1.0",
+            "GITHUB_SHA": "selected-commit",
+        }
+        matching = "selected-commit\trefs/tags/v0.1.0\n"
+        annotated = (
+            "tag-object\trefs/tags/v0.1.0\nselected-commit\trefs/tags/v0.1.0^{}\n"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "Cargo.toml").write_text('[package]\nversion = "0.1.0"\n')
+            for remote in (matching, annotated):
+                with patch(
+                    "release.subprocess.run",
+                    side_effect=[
+                        SimpleNamespace(stdout="selected-commit"),
+                        SimpleNamespace(stdout=remote),
+                    ],
+                ) as run:
+                    create_tag(root, environment)
+                    self.assertEqual(run.call_count, 2)
+                    self.assertEqual(
+                        run.call_args.args[0][0:3],
+                        ["git", "ls-remote", "https://github.com/xsyetopz/XYMonk.git"],
+                    )
+            with patch(
+                "release.subprocess.run",
+                side_effect=[
+                    SimpleNamespace(stdout="selected-commit"),
+                    SimpleNamespace(stdout=""),
+                    SimpleNamespace(stdout="created"),
+                    SimpleNamespace(stdout=matching),
+                ],
+            ) as run:
+                create_tag(root, environment)
+                self.assertEqual(run.call_count, 4)
+                self.assertEqual(
+                    run.call_args_list[2].args[0],
+                    [
+                        "gh",
+                        "api",
+                        "--hostname",
+                        "github.com",
+                        "--method",
+                        "POST",
+                        "/repos/xsyetopz/XYMonk/git/refs",
+                        "-f",
+                        "ref=refs/tags/v0.1.0",
+                        "-f",
+                        "sha=selected-commit",
+                    ],
+                )
+            with (
+                patch(
+                    "release.subprocess.run",
+                    side_effect=[
+                        SimpleNamespace(stdout="selected-commit"),
+                        SimpleNamespace(stdout="other-commit\trefs/tags/v0.1.0\n"),
+                    ],
+                ) as run,
+                self.assertRaisesRegex(ValueError, "refusing to overwrite"),
+            ):
+                create_tag(root, environment)
+            self.assertEqual(run.call_count, 2)
+            with (
+                patch(
+                    "release.subprocess.run",
+                    side_effect=[
+                        SimpleNamespace(stdout="selected-commit"),
+                        subprocess.CalledProcessError(128, "git ls-remote"),
+                    ],
+                ) as run,
+                self.assertRaises(subprocess.CalledProcessError),
+            ):
+                create_tag(root, environment)
+            self.assertEqual(run.call_count, 2)
 
     def test_tags_must_match_package_version_and_be_safe_for_filenames(self):
         for tag in ("0.1.0", "v0.1.0", "v0.1.0-rc.1"):
