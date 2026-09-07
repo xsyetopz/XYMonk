@@ -210,7 +210,7 @@ jobs:
 
   release:
     if: always() && !cancelled() && github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main' && needs.metadata.result == 'success' && needs.native.result == 'success' && needs.macos.result == 'success' && (needs.ios.result == 'success' || (inputs.ios_distribution == 'none' && needs.ios.result == 'skipped'))
-    name: Create draft release
+    name: Publish release
     needs: [metadata, native, macos, ios]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -252,13 +252,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
         run: python3 scripts/release.py create-tag
-      - name: Create draft release
+      - name: Upload binaries and publish release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
           PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
         run: |
-          args=(--verify-tag --draft --generate-notes --title "Delay Lama $RELEASE_TAG")
-          if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
-          gh release create "$RELEASE_TAG" "${args[@]}" release/*
+          # A previous attempt may have uploaded a draft before failing.
+          # Lookup errors must stop the job, not masquerade as a missing release.
+          draft="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq '.[] | select(.tag_name == env.RELEASE_TAG) | .draft')"
+          if [[ -z "$draft" ]]; then
+            args=(--verify-tag --draft --generate-notes --target "$GITHUB_SHA" --title "Delay Lama $RELEASE_TAG")
+            if [[ "$PRERELEASE" == true ]]; then args+=(--prerelease); fi
+            gh release create "$RELEASE_TAG" "${args[@]}"
+          elif [[ "$draft" != true ]]; then
+            echo "Refusing to replace an already published release: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" release/* --clobber
+
+          # Verify the exact uploaded set and bytes before making it public.
+          verification="$(mktemp -d)"
+          trap 'rm -rf "$verification"' EXIT
+          gh release download "$RELEASE_TAG" --dir "$verification"
+          diff <(cd release && printf '%s\n' * | sort) \
+            <(cd "$verification" && printf '%s\n' * | sort)
+          cmp release/SHA256SUMS "$verification/SHA256SUMS"
+          (cd "$verification" && sha256sum --check SHA256SUMS)
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$PRERELEASE" --target "$GITHUB_SHA"
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = false

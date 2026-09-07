@@ -84,7 +84,7 @@ python3 scripts/setup_release_secrets.py apply --platform ios
 
 Use `--platform macos` for desktop signing. Configuration preserves the other platform's entries. For iOS, provide an Apple Distribution `.p12` and four profiles: app and AUv3 extension for both Ad Hoc and App Store Connect. Press Enter at the password prompt to retain your existing `IOS_CERTIFICATE_PASSWORD`. No secret is uploaded by `configure`.
 
-The main-only Release workflow creates the version tag and a draft release. Select `ios_distribution` to include an Ad Hoc or TestFlight-signed IPA; it never uploads to Apple. Ad Hoc requires registered devices. TestFlight signing alone does not establish upload readiness: app icons, App Store Connect metadata, and Apple validation remain required.
+The main-only Release workflow creates the version tag, uploads all platform packages and `SHA256SUMS`, verifies the uploaded files, and publishes the release. It can resume an unfinished draft, but refuses to replace a published release or move an existing tag. Select `ios_distribution` to include an Ad Hoc or TestFlight-signed IPA; it never uploads to Apple. Ad Hoc requires registered devices. TestFlight signing alone does not establish upload readiness: app icons, App Store Connect metadata, and Apple validation remain required.
 
 ## Contributing
 
