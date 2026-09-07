@@ -1,4 +1,4 @@
-"""Configure, upload, or check XYMonk's macOS release secrets."""
+"""Configure, upload, or check XYMonk's Apple release secrets."""
 
 import argparse
 import base64
@@ -20,6 +20,22 @@ NAMES = (
     "NOTARIZE_APPLE_ID",
     "NOTARIZE_PASSWORD",
 )
+IOS_PROFILES = {
+    "IOS_ADHOC_APP_PROFILE_BASE64": "Ad Hoc / main app (com.audionerdz.delaylama)",
+    "IOS_ADHOC_EXTENSION_PROFILE_BASE64": "Ad Hoc / AUv3 extension (com.audionerdz.delaylama.AUExt)",
+    "IOS_TESTFLIGHT_APP_PROFILE_BASE64": "TestFlight (App Store Connect) / main app (com.audionerdz.delaylama)",
+    "IOS_TESTFLIGHT_EXTENSION_PROFILE_BASE64": "TestFlight (App Store Connect) / AUv3 extension (com.audionerdz.delaylama.AUExt)",
+}
+IOS_NAMES = ("IOS_DISTRIBUTION_CERT_BASE64", "IOS_CERTIFICATE_PASSWORD", *IOS_PROFILES)
+ALL_NAMES = (*NAMES, *IOS_NAMES)
+
+
+def names_for(platform):
+    match platform:
+        case "ios":
+            return IOS_NAMES
+        case _:
+            return NAMES
 
 
 class SetupError(Exception):
@@ -75,10 +91,8 @@ def guard(root):
 
 
 def validate(values):
-    if set(values) != set(NAMES):
-        raise SetupError(
-            "Secret file must contain exactly the five release secret names"
-        )
+    if not values or set(values) - set(ALL_NAMES):
+        raise SetupError("Secret file contains unknown names or is empty")
     if any(
         not value or "\n" in value or "\r" in value or len(value.encode()) > 49152
         for value in values.values()
@@ -93,8 +107,9 @@ def save(path, values):
     fd, temporary = tempfile.mkstemp(prefix=".env.release.", dir=path.parent)
     try:
         with os.fdopen(fd, "w") as output:
-            for name in NAMES:
-                output.write(f"{name}={shlex.quote(values[name])}\n")
+            for name in ALL_NAMES:
+                if name in values:
+                    output.write(f"{name}={shlex.quote(values[name])}\n")
         os.replace(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)
@@ -120,60 +135,72 @@ def read(path):
     return values
 
 
-def status():
+def status(platform="macos"):
+    names = names_for(platform)
     configured = {
         entry["name"]
         for entry in json.loads(
             run(["gh", "secret", "list", "--repo", REPOSITORY, "--json", "name"])
         )
     }
-    for name in NAMES:
+    for name in names:
         print(f"{name}: {'configured' if name in configured else 'missing'}")
-    return set(NAMES) <= configured
+    return set(names) <= configured
 
 
-def apply(values):
+def apply(values, platform="macos"):
     validate(values)
-    print(f"Set or replace these secrets in {REPOSITORY}: {', '.join(NAMES)}")
+    names = names_for(platform)
+    missing = set(names) - set(values)
+    if missing:
+        raise SetupError("Missing secrets: " + ", ".join(sorted(missing)))
+    print(f"Set or replace these secrets in {REPOSITORY}: {', '.join(names)}")
     if input(f"Type {REPOSITORY} to confirm: ").strip() != REPOSITORY:
         raise SetupError("Upload cancelled; no secrets changed")
     completed = []
     try:
-        for name in NAMES:
+        for name in names:
             run(["gh", "secret", "set", name, "--repo", REPOSITORY], input=values[name])
             completed.append(name)
     except SetupError:
         raise SetupError(
             "Upload failed; already updated: " + (", ".join(completed) or "none")
         ) from None
-    if not status():
+    if not status(platform):
         raise SetupError("Upload finished but some secret names are missing")
 
 
-def configure(path):
+def encoded_file(prompt):
+    path = Path(input(prompt).strip()).expanduser()
+    if not path.is_file() or not 0 < path.stat().st_size <= 36864:
+        raise SetupError("File must be nonempty and fit the 48 KiB encoded limit")
+    return base64.b64encode(path.read_bytes()).decode("ascii")
+
+
+def configure(path, platform="macos"):
+    values = read(path) if path.exists() or path.is_symlink() else {}
     if (path.exists() or path.is_symlink()) and input(
-        "Replace existing .env.release? Type yes: "
+        f"Update {platform} entries in .env.release? Type yes: "
     ) != "yes":
         raise SetupError("Configuration cancelled")
-    certificate = Path(
-        input("Developer ID Application .p12 path: ").strip()
-    ).expanduser()
-    if not 0 < certificate.stat().st_size <= 36864:
-        raise SetupError(
-            "Certificate must be nonempty and fit the 48 KiB encoded limit"
-        )
-    values = dict(
-        zip(
-            NAMES,
-            (
-                base64.b64encode(certificate.read_bytes()).decode("ascii"),
-                getpass.getpass("Certificate password: "),
-                secrets.token_urlsafe(32),
-                getpass.getpass("Apple ID: "),
-                getpass.getpass("Apple app-specific password: "),
-            ),
-        )
-    )
+    match platform:
+        case "ios":
+            values[IOS_NAMES[0]] = encoded_file("Apple Distribution .p12 path: ")
+            password = getpass.getpass("Certificate password (Enter keeps existing): ")
+            if password or IOS_NAMES[1] not in values:
+                values[IOS_NAMES[1]] = password
+            for name, label in IOS_PROFILES.items():
+                values[name] = encoded_file(f"{label}\n.mobileprovision file path: ")
+        case _:
+            values.update(
+                DEVELOPER_ID_APPLICATION_CERT_BASE64=encoded_file(
+                    "Developer ID Application .p12 path: "
+                ),
+                CERTIFICATE_SECRET=getpass.getpass("Certificate password: "),
+                KEYCHAIN_SECRET=secrets.token_urlsafe(32),
+                NOTARIZE_APPLE_ID=getpass.getpass("Apple ID: "),
+                NOTARIZE_PASSWORD=getpass.getpass("Apple app-specific password: "),
+            )
     save(path, values)
     print("Saved private .env.release; nothing uploaded. Run apply to upload.")
 
@@ -181,6 +208,7 @@ def configure(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("configure", "apply", "status"))
+    parser.add_argument("--platform", choices=("macos", "ios"), default="macos")
     args = parser.parse_args()
     try:
         root = Path(__file__).resolve().parent.parent
@@ -188,12 +216,13 @@ def main():
         if args.command != "status" and not sys.stdin.isatty():
             raise SetupError("configure and apply require an interactive terminal")
         path = root / ".env.release"
-        if args.command == "configure":
-            configure(path)
-        elif args.command == "apply":
-            apply(read(path))
-        else:
-            status()
+        match args.command:
+            case "configure":
+                configure(path, args.platform)
+            case "apply":
+                apply(read(path), args.platform)
+            case _:
+                status(args.platform)
     except SetupError as error:
         print(str(error), file=sys.stderr)
         return 1
