@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+#[cfg(not(target_os = "ios"))]
 use baseview::{Event, EventStatus, MouseButton, MouseEvent, Window, WindowHandler};
 use num_traits::ToPrimitive;
 use truce::core::editor::PluginContextReadF32;
@@ -64,6 +65,33 @@ pub(super) struct Handler {
 }
 
 impl Handler {
+    #[cfg(any(test, target_os = "ios"))]
+    pub(super) fn pointer(&mut self, phase: PointerPhase, position: (f32, f32)) {
+        self.state.pointer.cursor = position;
+        match phase {
+            PointerPhase::Down => self.press(),
+            PointerPhase::Drag => {
+                if let Some(active) = self.state.active {
+                    self.drag(active);
+                }
+            }
+            PointerPhase::Up => self.release(),
+        }
+    }
+
+    pub(super) fn frame(&mut self) {
+        let controls = self.sync_control_values();
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.render(
+                self.state.pointer.marker,
+                self.state.show_help,
+                &self.params,
+                controls,
+                self.logical_size,
+            );
+        }
+    }
+
     pub(super) fn new(
         renderer: Option<Renderer>,
         params: Arc<PluginParams>,
@@ -192,7 +220,7 @@ impl Handler {
         }
     }
 
-    fn release(&mut self) {
+    pub(super) fn release(&mut self) {
         let Some(target) = self.state.active.take() else {
             return;
         };
@@ -219,18 +247,10 @@ impl Handler {
 #[cfg(test)]
 mod tests;
 
+#[cfg(not(target_os = "ios"))]
 impl WindowHandler for Handler {
     fn on_frame(&mut self, _window: &mut Window) {
-        let controls = self.sync_control_values();
-        if let Some(renderer) = self.renderer.as_mut() {
-            renderer.render(
-                self.state.pointer.marker,
-                self.state.show_help,
-                &self.params,
-                controls,
-                self.logical_size,
-            );
-        }
+        self.frame();
     }
 
     fn on_event(&mut self, _window: &mut Window, event: Event) -> EventStatus {

@@ -48,11 +48,20 @@ impl Renderer {
         unsafe_code,
         reason = "wgpu requires the baseview child window to outlive its surface"
     )]
+    #[cfg(not(target_os = "ios"))]
     pub(super) unsafe fn new(window: &baseview::Window, width: u32, height: u32) -> Option<Self> {
         let instance = wgpu::Instance::new(truce_gui::platform::editor_instance_descriptor());
         // SAFETY: The baseview child window outlives the surface through the renderer.
         let surface = unsafe { truce_gui::platform::create_wgpu_surface(&instance, window) }?;
+        Self::with_surface(&instance, surface, width, height)
+    }
 
+    pub(super) fn with_surface(
+        instance: &wgpu::Instance,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+    ) -> Option<Self> {
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
@@ -338,12 +347,8 @@ impl Renderer {
 }
 
 fn key_white(pixels: &mut [u8]) {
-    for pixel in pixels.chunks_exact_mut(4) {
-        if let [red, green, blue, alpha] = pixel
-            && *red == 255
-            && *green == 255
-            && *blue == 255
-        {
+    for [red, green, blue, alpha] in pixels.as_chunks_mut::<4>().0 {
+        if *red == 255 && *green == 255 && *blue == 255 {
             *alpha = 0;
         }
     }

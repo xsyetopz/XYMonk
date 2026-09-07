@@ -24,7 +24,6 @@ au = ["dep:truce-au"]
 [dependencies]
 truce = { version = "6.3.0", default-features = false }
 truce-gui = { version = "6.3.0", default-features = false, features = ["cpu"] }
-baseview = { version = "0.1.1-truce.13", package = "baseview-truce" }
 raw-window-handle = "0.6.2"
 wgpu = { version = "=29.0.4", default-features = false, features = [
     "wgsl",
@@ -44,6 +43,15 @@ truce-au = { version = "6.3.0", optional = true }
 
 [build-dependencies]
 truce-build = "6.3.0"
+
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+baseview = { version = "0.1.1-truce.13", package = "baseview-truce" }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6.4"
+objc2-foundation = { version = "0.3.2", features = ["NSGeometry", "NSRunLoop", "NSSet"] }
+objc2-quartz-core = { version = "0.3.2", features = ["CADisplayLink"] }
+objc2-ui-kit = { version = "0.3.2", features = ["UIView", "UITouch", "UIEvent"] }
 
 [lints.rust]
 missing_debug_implementations = "warn"             # Require `Debug` impl on public types.

@@ -89,7 +89,7 @@ fn noncanonical_state_is_normalized_by_the_single_parameter_authority() {
     let Some(payload) = payload else {
         return;
     };
-    for (destination, value) in payload.chunks_exact_mut(4).zip(noncanonical) {
+    for (destination, value) in payload.as_chunks_mut::<4>().0.iter_mut().zip(noncanonical) {
         destination.copy_from_slice(&value.to_le_bytes());
     }
 

@@ -3,10 +3,16 @@ mod artwork;
 mod draws;
 mod geometry;
 mod interaction;
+#[cfg(target_os = "ios")]
+mod ios;
+#[cfg(not(target_os = "ios"))]
 mod lifecycle;
 mod renderer;
 
 pub(super) use animation::animation_frame;
+#[cfg(target_os = "ios")]
+pub(super) use ios::RawEditor;
+#[cfg(not(target_os = "ios"))]
 pub(super) use lifecycle::RawEditor;
 
 #[cfg(test)]

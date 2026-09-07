@@ -123,3 +123,35 @@ fn host_parameters_drive_control_assets_and_idle_vowel_marker() {
     handler.sync_control_values();
     assert!((handler.state.pointer.marker.1 - 0.6).abs() <= f32::EPSILON);
 }
+
+#[test]
+fn touch_cancellation_and_close_release_the_pad_once() {
+    let params = Arc::new(PluginParams::new());
+    let events = Arc::new(ArrayQueue::new(8));
+    let context = test_context(Arc::clone(&params), Arc::clone(&events), [0.5; 4]);
+    let mut handler = Handler::new(None, Arc::clone(&params), context, (360, 510));
+    handler.pointer(super::PointerPhase::Down, (179.0, 383.0));
+    handler.pointer(super::PointerPhase::Drag, (179.0, 425.0));
+    handler.release(); // UIKit touch cancellation.
+    handler.release(); // Editor close after cancellation.
+    let edits: Vec<_> = std::iter::from_fn(|| events.pop()).collect();
+    assert_eq!(
+        edits
+            .iter()
+            .filter(|edit| matches!(edit, HostEdit::End(_)))
+            .count(),
+        1
+    );
+    let commands: Vec<_> = std::iter::from_fn(|| params.editor.pop()).collect();
+    assert_eq!(
+        commands
+            .iter()
+            .filter(|command| matches!(
+                command.transition,
+                crate::protocol::GestureTransition::NoteOff(_)
+            ))
+            .count(),
+        1
+    );
+    assert!(handler.state.active.is_none());
+}

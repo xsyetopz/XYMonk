@@ -12,3 +12,4 @@ category = "instrument"
 fourcc = "DLma"
 au_manufacturer = "xsyT"
 au_tag = "Synthesizer"
+ios_scale_editor_to_fit = true
