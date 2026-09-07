@@ -14,7 +14,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from release import BUNDLES, archive, create_tag, release_metadata, release_version
+from release import (
+    BUNDLES,
+    archive,
+    create_tag,
+    release_metadata,
+    release_version,
+    require_ci,
+)
 
 FAKE_RELEASE_TOOL = r"""
 import json, os, pathlib, shutil, sys
@@ -52,6 +59,80 @@ else:
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_ci_gate_requires_latest_exact_commit_success_and_fails_closed(self):
+        environment = {
+            "GITHUB_REPOSITORY": "xsyetopz/XYMonk",
+            "GITHUB_REF": "refs/heads/main",
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "RELEASE_TAG": "v0.1.0",
+            "GITHUB_SHA": "selected-commit",
+        }
+        success = {
+            "run_number": 1, "head_sha": "selected-commit", "head_branch": "main",
+            "event": "push", "status": "completed", "conclusion": "success",
+            "html_url": "https://github.com/xsyetopz/XYMonk/actions/runs/1",
+        }
+        cases = [([], False), ([success], True),
+                 ([success | {"event": "workflow_dispatch"}], True)]
+        for change in (
+            {"conclusion": "failure"}, {"conclusion": "cancelled"},
+            {"conclusion": "skipped"}, {"conclusion": "timed_out"},
+            {"status": "queued", "conclusion": None},
+            {"status": "in_progress", "conclusion": None},
+            {"head_sha": "other-commit"}, {"head_branch": "other"},
+            {"event": "pull_request"},
+        ):
+            # An older success must never mask a newer failure or pending run.
+            cases.append(([success | change | {"run_number": 2}, success], False))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "Cargo.toml").write_text('[package]\nversion = "0.1.0"\n')
+            for runs, allowed in cases:
+                with self.subTest(runs=runs), patch(
+                    "release.subprocess.run",
+                    side_effect=[
+                        SimpleNamespace(stdout="selected-commit\n"),
+                        SimpleNamespace(stdout=json.dumps([
+                            {"workflow_runs": runs[:1]}, {"workflow_runs": runs[1:]}
+                        ])),
+                    ],
+                ) as run:
+                    if allowed:
+                        require_ci(root, environment)
+                    else:
+                        with self.assertRaises(ValueError):
+                            require_ci(root, environment)
+                    command = run.call_args.args[0]
+                    self.assertIn("--paginate", command)
+                    self.assertIn("--slurp", command)
+                    self.assertEqual(command[-1],
+                        "repos/xsyetopz/XYMonk/actions/workflows/ci.yml/runs"
+                        "?head_sha=selected-commit&branch=main&per_page=100")
+            for failure in (
+                subprocess.CalledProcessError(1, "gh"),
+                SimpleNamespace(stdout="invalid JSON"),
+            ):
+                with self.subTest(failure=failure), patch(
+                    "release.subprocess.run",
+                    side_effect=[SimpleNamespace(stdout="selected-commit\n"), failure],
+                ), self.assertRaises((subprocess.CalledProcessError, ValueError)):
+                    require_ci(root, environment)
+
+    def test_ci_gate_precedes_builds_and_tag_creation(self):
+        workflow = (Path(__file__).resolve().parents[1]
+                    / ".github/workflows/release.yml").read_text()
+        metadata = workflow.split("  metadata:\n", 1)[1].split("  native:\n", 1)[0]
+        self.assertIn("run: python3 scripts/release.py require-ci", metadata)
+        self.assertIn("actions: read", metadata)
+        for job, following in (("native", "macos"), ("macos", "ios"), ("ios", "release")):
+            block = workflow.split(f"  {job}:\n", 1)[1].split(f"  {following}:\n", 1)[0]
+            self.assertIn("needs: metadata", block)
+        publish = workflow.split("  release:\n", 1)[1]
+        self.assertIn("needs.metadata.result == 'success'", publish)
+        self.assertIn("actions: read", publish)
+        self.assertLess(publish.index("scripts/release.py require-ci"),
+                        publish.index("scripts/release.py create-tag"))
+
     @unittest.skipUnless(os.name == "posix", "workflow uses bash")
     def test_workflow_publishes_only_after_all_release_assets_are_verified(self):
         workflow = Path(__file__).resolve().parents[1] / ".github/workflows/release.yml"

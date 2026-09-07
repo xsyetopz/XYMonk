@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -49,6 +50,45 @@ def release_metadata(root: Path, environment: dict[str, str]) -> dict[str, str]:
     if commit != environment.get("GITHUB_SHA"):
         raise ValueError("checkout must match the selected main commit")
     return {"tag": tag, "version": version, "prerelease": str("-" in version).lower()}
+
+
+def require_ci(root: Path, environment: dict[str, str]) -> None:
+    """Fail closed unless the newest CI run for this exact main commit passed."""
+    release_metadata(root, environment)
+    commit = environment["GITHUB_SHA"]
+    result = subprocess.run(
+        [
+            "gh",
+            "api",
+            "--hostname",
+            "github.com",
+            "--paginate",
+            "--slurp",
+            f"repos/xsyetopz/XYMonk/actions/workflows/ci.yml/runs?head_sha={commit}&branch=main&per_page=100",
+        ],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    runs = [run for page in json.loads(result.stdout) for run in page["workflow_runs"]]
+    if not runs:
+        raise ValueError(
+            f"No CI run for {commit}; run CI successfully before releasing"
+        )
+    latest = max(runs, key=lambda run: run["run_number"])
+    if (
+        latest["head_sha"] != commit
+        or latest["head_branch"] != "main"
+        or latest["event"] not in ("push", "workflow_dispatch")
+        or latest["status"] != "completed"
+        or latest["conclusion"] != "success"
+    ):
+        raise ValueError(
+            f"CI must pass for {commit} before releasing: {latest['html_url']} "
+            f"({latest['status']}/{latest['conclusion']})"
+        )
+    print(f"CI passed for {commit}: {latest['html_url']}")
 
 
 def create_tag(root: Path, environment: dict[str, str]) -> None:
@@ -159,6 +199,7 @@ def main() -> None:
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("metadata")
     subcommands.add_parser("create-tag")
+    subcommands.add_parser("require-ci")
     pack = subcommands.add_parser("archive")
     pack.add_argument("--system", choices=("windows", "linux"), required=True)
     pack.add_argument("--arch", choices=("x86_64", "aarch64"), required=True)
@@ -171,6 +212,8 @@ def main() -> None:
                 output.writelines(f"{key}={value}\n" for key, value in metadata.items())
         case "create-tag":
             create_tag(root, dict(os.environ))
+        case "require-ci":
+            require_ci(root, dict(os.environ))
         case _:
             print(archive(root, args.system, args.arch))
 

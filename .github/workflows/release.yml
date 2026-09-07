@@ -28,9 +28,12 @@ defaults:
 jobs:
   metadata:
     if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main'
-    name: Validate release tag
+    name: Validate release tag and CI
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
@@ -45,6 +48,11 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.tag }}
         run: python3 scripts/release.py metadata
+      - name: Require successful CI for selected commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 scripts/release.py require-ci
 
   native:
     if: github.repository == 'xsyetopz/XYMonk' && github.ref == 'refs/heads/main'
@@ -216,6 +224,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -247,6 +256,11 @@ jobs:
           test "${#actual[@]}" -eq "${#files[@]}"
           sha256sum -- "${files[@]}" > SHA256SUMS
           sha256sum --check SHA256SUMS
+      - name: Recheck CI before creating release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: python3 scripts/release.py require-ci
       - name: Create or verify release tag
         env:
           GH_TOKEN: ${{ github.token }}
