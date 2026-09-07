@@ -198,18 +198,20 @@ package_release() {
   cp -R "$bundle_dir/delay-lama.lv2" "$stage/DelayLama/"
 
   [[ -f "$REPO_ROOT/README.md" ]] || die "README.md is missing"
-  cp "$REPO_ROOT/README.md" "$stage/DelayLama/README.md"
+  mkdir -p "$stage/DelayLama/Documentation"
+  cp "$REPO_ROOT/docs/install/macos.txt" "$stage/DelayLama/INSTALL.txt"
+  cp "$REPO_ROOT/README.md" "$stage/DelayLama/Documentation/README.md"
   license_source=''
   for candidate in LICENSE LICENSE.txt COPYING COPYING.txt; do
     if [[ -f "$REPO_ROOT/$candidate" ]]; then license_source="$REPO_ROOT/$candidate"; break; fi
   done
   if [[ -n "$license_source" ]]; then
-    cp "$license_source" "$stage/DelayLama/$(basename "$license_source")"
+    cp "$license_source" "$stage/DelayLama/Documentation/$(basename "$license_source")"
   else
     # This repository keeps the original redistribution terms in README.md.
     grep -q '^## License$' "$REPO_ROOT/README.md" || die "README license terms missing"
   fi
-  cp "$REPO_ROOT/CONTRIBUTING.md" "$REPO_ROOT/CODE_OF_CONDUCT.md" "$stage/DelayLama/"
+  cp "$REPO_ROOT/CONTRIBUTING.md" "$REPO_ROOT/CODE_OF_CONDUCT.md" "$stage/DelayLama/Documentation/"
 
   while IFS= read -r -d '' bundle; do sign_tree "$bundle"; done < <(
     find "$stage/DelayLama" -type d \( -name '*.clap' -o -name '*.vst3' -o -name '*.component' -o -name '*.app' -o -name '*.lv2' \) -print \

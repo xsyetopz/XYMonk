@@ -93,6 +93,12 @@ class MacReleaseTests(unittest.TestCase):
                 (framework / "binary").write_bytes(b"Mach-O fixture")
                 for name in ("README.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"):
                     (root / name).write_text("## License\nFixture terms.\n")
+                instructions = root / "docs/install/macos.txt"
+                instructions.parent.mkdir(parents=True)
+                shutil.copy2(
+                    Path(__file__).resolve().parents[1] / "docs/install/macos.txt",
+                    instructions,
+                )
                 runner = root / "runner"
                 runner.mkdir()
                 log = root / "commands.jsonl"
@@ -126,6 +132,27 @@ class MacReleaseTests(unittest.TestCase):
                 self.assertEqual(
                     package.returncode == 0, status == "Accepted", package.stderr
                 )
+                staged = runner / "xymonk-release-stage/DelayLama"
+                self.assertEqual(
+                    {path.name for path in staged.iterdir()},
+                    {
+                        "Delay Lama.clap",
+                        "Delay Lama.vst3",
+                        "Delay Lama.component",
+                        "Delay Lama.app",
+                        "delay-lama.lv2",
+                        "INSTALL.txt",
+                        "Documentation",
+                    },
+                )
+                self.assertEqual(
+                    (staged / "INSTALL.txt").read_bytes(), instructions.read_bytes()
+                )
+                for name in ("README.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"):
+                    self.assertEqual(
+                        (staged / "Documentation" / name).read_bytes(),
+                        (root / name).read_bytes(),
+                    )
                 commands = [json.loads(line) for line in log.read_text().splitlines()]
                 signed = [
                     command[-1]

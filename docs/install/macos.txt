@@ -1,0 +1,27 @@
+DELAY LAMA - macOS
+
+1. Open the DMG. The same universal download supports Apple Silicon and Intel.
+2. Close your DAW. Choose a format it supports; you do not need all of them.
+   Copy the complete item to the corresponding destination:
+
+   Item                   Destination folder
+   Delay Lama.vst3        ~/Library/Audio/Plug-Ins/VST3
+   Delay Lama.clap        ~/Library/Audio/Plug-Ins/CLAP
+   Delay Lama.component   ~/Library/Audio/Plug-Ins/Components  (AUv2)
+   delay-lama.lv2         ~/Library/Audio/Plug-Ins/LV2
+
+   In Finder, press Command-Shift-G and paste the destination. The ~ means
+   your home folder. Create the final folder if it does not exist.
+3. Eject the DMG. Reopen your DAW, rescan its plug-ins, and load Delay Lama
+   on an instrument track. Play MIDI notes or use its XY pad.
+
+AUv3 alternative:
+Copy Delay Lama.app to /Applications and open that installed copy once before
+reopening your DAW. This app contains the AUv3 extension; it is not a standalone
+synthesizer. Keep it installed. Do not extract or move the .appex inside it.
+
+The DMG is a download container, not an installer. Copy the plug-in before
+ejecting it. Do not rename bundles or use Show Package Contents to install them.
+When updating, replace the whole old plug-in rather than merging its contents.
+Keep accompanying documentation when redistributing this download.
+Project information and redistribution terms: Documentation/README.md.

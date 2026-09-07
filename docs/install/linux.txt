@@ -1,0 +1,22 @@
+DELAY LAMA - LINUX
+
+1. Download the tar.gz matching your DAW's architecture: x86_64 or aarch64.
+   Extract it. These builds use Ubuntu 24.04 and require X11 (or XWayland)
+   and Vulkan.
+2. Close your DAW. Choose a format it supports; you do not need all three.
+   Copy the complete item, including everything inside a plug-in folder:
+
+   Item                 Destination folder
+   Delay Lama.vst3      ~/.vst3
+   Delay Lama.clap      ~/.clap
+   delay-lama.lv2       ~/.lv2
+
+   The ~ means your home folder. Create the destination if it does not exist.
+   Folders beginning with a dot are normally hidden in file managers.
+3. Reopen your DAW, rescan its plug-ins, and load Delay Lama on an instrument
+   track. Play MIDI notes or use its XY pad.
+
+Do not rename the plug-in or copy only the .so file from inside its folder.
+When updating, replace the whole old plug-in rather than merging its contents.
+Keep accompanying documentation when redistributing this download.
+Project information and redistribution terms: Documentation/README.md.

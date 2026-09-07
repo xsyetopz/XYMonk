@@ -1,0 +1,26 @@
+DELAY LAMA - WINDOWS
+
+1. Download the ZIP matching your DAW's architecture: x86_64 for an x64 DAW,
+   aarch64 for a native ARM64 DAW. Extract the ZIP before copying any files.
+2. Close your DAW. Choose a format it supports; you do not need all three.
+   Copy the complete item, including everything inside a plug-in folder:
+
+   Item                 Destination folder
+   Delay Lama.vst3      %COMMONPROGRAMFILES%\VST3
+   Delay Lama.clap      %COMMONPROGRAMFILES%\CLAP
+   delay-lama.lv2       %APPDATA%\LV2
+
+   Paste the destination into File Explorer's address bar. Create the final
+   folder if needed. Common Program Files may require administrator approval.
+3. Reopen your DAW, rescan its plug-ins, and load Delay Lama on an instrument
+   track. Play MIDI notes or use its XY pad.
+
+Without administrator access, VST3 and CLAP can instead go in:
+   %LOCALAPPDATA%\Programs\Common\VST3
+   %LOCALAPPDATA%\Programs\Common\CLAP
+Add the chosen folder to your DAW's scan paths if it is not discovered.
+
+Do not rename the plug-in or copy only the executable from inside its folder.
+When updating, replace the whole old plug-in rather than merging its contents.
+Keep accompanying documentation when redistributing this download.
+Project information and redistribution terms: Documentation/README.md.

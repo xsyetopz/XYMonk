@@ -253,13 +253,23 @@ class ReleaseTests(unittest.TestCase):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 release_version(tag, "0.1.0")
 
-    def test_archives_contain_all_formats_and_license_readme_only(self):
+    def test_archives_contain_plugins_platform_guide_and_accompanying_documents(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "Cargo.toml").write_text('[package]\nversion = "0.1.0"\n')
             for document in ("README.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"):
                 (root / document).write_text(
                     "Release documentation and license terms.\n"
+                )
+            instructions = root / "docs/install"
+            instructions.mkdir(parents=True)
+            for system in ("windows", "linux"):
+                (instructions / f"{system}.txt").write_bytes(
+                    (
+                        Path(__file__).resolve().parents[1]
+                        / "docs/install"
+                        / f"{system}.txt"
+                    ).read_bytes()
                 )
             source = root / "target/bundles"
             source.mkdir(parents=True)
@@ -276,14 +286,34 @@ class ReleaseTests(unittest.TestCase):
             ):
                 with self.subTest(system=system, arch=arch):
                     result = archive(root, system, arch)
+                    guide_path = f"DelayLama-0.1.0-{system}-{arch}/INSTALL.txt"
                     if system == "windows":
                         with zipfile.ZipFile(result) as packed:
                             names = packed.namelist()
+                            guide = packed.read(guide_path)
                     else:
                         with tarfile.open(result) as packed:
                             names = packed.getnames()
+                            stored = packed.extractfile(guide_path)
+                            assert stored is not None, (
+                                f"Not a readable file: {guide_path}"
+                            )
+                            with stored:
+                                guide = stored.read()
+                    self.assertEqual(
+                        guide, (instructions / f"{system}.txt").read_bytes()
+                    )
                     contents = {name.split("/", 1)[1] for name in names if "/" in name}
-                    self.assertIn("README.md", contents)
+                    self.assertEqual(
+                        {name.split("/", 1)[0] for name in contents if name},
+                        {*BUNDLES, "INSTALL.txt", "Documentation"},
+                    )
+                    for document in (
+                        "README.md",
+                        "CONTRIBUTING.md",
+                        "CODE_OF_CONDUCT.md",
+                    ):
+                        self.assertIn(f"Documentation/{document}", contents)
                     self.assertIn(BUNDLES[0], contents)
                     self.assertIn(f"{BUNDLES[1]}/plugin", contents)
                     self.assertIn(f"{BUNDLES[2]}/plugin", contents)

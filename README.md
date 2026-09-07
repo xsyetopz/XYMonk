@@ -17,7 +17,9 @@ Linux builds use Ubuntu 24.04 and need X11 (or XWayland) and Vulkan. 32-bit targ
 
 ## Install
 
-Extract the release archive or open the macOS DMG. Copy the format your DAW uses to its plug-in folder, then rescan:
+Download the package for your operating system and **DAW architecture**: Windows ZIP, Linux tar.gz, or the universal macOS DMG. Extract the archive or open the DMG, then read `INSTALL.txt` beside the plug-ins. The `Documentation` folder keeps the project information and redistribution terms together.
+
+Close your DAW, copy the **whole plug-in** in a format it supports, then reopen it and rescan. You do not need to install every format, and you should not copy individual files out of a plug-in bundle.
 
 | Platform | Plug-in folders |
 | --- | --- |
@@ -25,7 +27,9 @@ Extract the release archive or open the macOS DMG. Copy the format your DAW uses
 | Linux | `~/.clap`, `~/.vst3`, `~/.lv2` |
 | macOS | `~/Library/Audio/Plug-Ins/{CLAP,VST3,LV2,Components}` |
 
-For AUv3, copy `Delay Lama.app` to `/Applications` and open it once before rescanning your DAW. Windows and Linux archives are unsigned; the macOS DMG is signed and notarized by the release workflow.
+For AUv3, copy `Delay Lama.app` to `/Applications` and open the installed copy once before rescanning your DAW. It contains the AUv3 extension, not a standalone synthesizer. Keep it installed; do not extract the extension from inside it. The DMG itself is not an installer. Windows and Linux archives are unsigned; the macOS DMG is signed and notarized by the release workflow.
+
+The optional iOS IPA is separate from desktop installation: Ad Hoc builds require registered devices, and a TestFlight-signed IPA must go through Apple's upload and distribution process. It cannot be installed by copying it into a plug-in folder.
 
 ## Build
 

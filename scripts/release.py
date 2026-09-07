@@ -138,9 +138,13 @@ def archive(root: Path, system: str, arch: str) -> Path:
                 shutil.copytree(bundle, staging / bundle_name, symlinks=True)
             else:
                 shutil.copy2(bundle, staging / bundle_name)
-        # README contains the original redistribution/license terms.
+        shutil.copy2(root / "docs/install" / f"{system}.txt", staging / "INSTALL.txt")
+        # Keep all accompanying documents, including redistribution terms,
+        # together so the plug-ins and quick-start remain easy to find.
+        documentation = staging / "Documentation"
+        documentation.mkdir()
         for document in ("README.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"):
-            shutil.copy2(root / document, staging / document)
+            shutil.copy2(root / document, documentation / document)
         result = shutil.make_archive(
             str(output / name),
             "zip" if system == "windows" else "gztar",
