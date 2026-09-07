@@ -30,7 +30,7 @@ cargo test
 cargo clippy --all-targets --all-features
 ```
 
-CI runs `cargo test` and `cargo build --release` on Linux, macOS, and Windows. macOS plug-in packaging and AUv3 development installation are documented in `README.md`.
+CI runs tests and release builds on Linux, macOS, and Windows, only on `main` in `xsyetopz/XYMonk`. Cross-platform plug-in builds and release signing are documented in `README.md`.
 
 ## Repository boundaries
 
