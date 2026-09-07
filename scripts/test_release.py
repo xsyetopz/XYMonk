@@ -98,7 +98,9 @@ class ReleaseTests(unittest.TestCase):
                     cwd=root,
                     env=os.environ
                     | {
-                        "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
+                        # Exclude developer-installed tools (notably Homebrew
+                        # sha256sum) so macOS exercises its system shasum.
+                        "PATH": f"{tools}{os.pathsep}{os.defpath}",
                         "RELEASE_SCENARIO": scenario,
                         "RELEASE_TAG": "v0.1.0",
                         "PRERELEASE": "false",

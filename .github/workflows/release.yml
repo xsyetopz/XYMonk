@@ -280,6 +280,10 @@ jobs:
           diff <(cd release && printf '%s\n' * | sort) \
             <(cd "$verification" && printf '%s\n' * | sort)
           cmp release/SHA256SUMS "$verification/SHA256SUMS"
-          (cd "$verification" && sha256sum --check SHA256SUMS)
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd "$verification" && sha256sum --check SHA256SUMS)
+          else
+            (cd "$verification" && shasum -a 256 --check SHA256SUMS)
+          fi
           gh release edit "$RELEASE_TAG" --draft=false --prerelease="$PRERELEASE" --target "$GITHUB_SHA"
           test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = false
