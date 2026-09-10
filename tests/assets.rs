@@ -19,22 +19,18 @@ fn qoi_pixels(bytes: &[u8]) -> Option<(Vec<u8>, usize, usize)> {
     Some((decoder.decode_to_vec().ok()?, width, height))
 }
 
-fn fingerprint_without_right_edge(pixels: &[u8], width: usize, height: usize) -> u64 {
-    let mut fingerprint = 0xcbf2_9ce4_8422_2325_u64;
-    for row in pixels.chunks_exact(width * 4).take(height) {
-        for byte in row.iter().take((width - 2) * 4) {
-            fingerprint = (fingerprint ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3);
-        }
-    }
-    fingerprint
+fn fingerprint(pixels: &[u8]) -> u64 {
+    pixels.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 #[test]
-fn asset_pixel_dimensions_are_preserved() {
+fn asset_pixel_dimensions_match_the_rendering_contract() {
     let assets: [(&[u8], (u32, u32)); 10] = [
         (include_bytes!("../assets/source_surface.qoi"), (360, 510)),
-        (include_bytes!("../assets/scene_background.qoi"), (360, 311)),
-        (include_bytes!("../assets/control_panel.qoi"), (360, 220)),
+        (include_bytes!("../assets/scene_background.qoi"), (357, 311)),
+        (include_bytes!("../assets/control_panel.qoi"), (357, 220)),
         (
             include_bytes!("../assets/monk_sprite_sheet.qoi"),
             (1570, 1866),
@@ -52,28 +48,23 @@ fn asset_pixel_dimensions_are_preserved() {
 }
 
 #[test]
-fn rendered_backgrounds_preserve_content_and_repair_the_right_edge() {
+fn rendered_backgrounds_crop_three_columns_without_resampling() {
     let assets = [
         (
             include_bytes!("../assets/scene_background.qoi").as_slice(),
-            12_741_140_312_361_243_458_u64,
+            15_167_596_836_934_979_104_u64,
         ),
         (
             include_bytes!("../assets/control_panel.qoi").as_slice(),
-            7_030_253_285_547_380_992_u64,
+            5_565_318_640_726_019_791_u64,
         ),
     ];
     for (bytes, expected_fingerprint) in assets {
         let (pixels, width, height) = qoi_pixels(bytes).expect("valid RGBA QOI artwork");
-        assert_eq!(width, 360);
-        assert_eq!(
-            fingerprint_without_right_edge(&pixels, width, height),
-            expected_fingerprint,
-        );
-        for row in pixels.chunks_exact(width * 4).take(height) {
-            let clean_edge = &row[(width - 3) * 4..(width - 2) * 4];
-            assert_eq!(&row[(width - 2) * 4..(width - 1) * 4], clean_edge);
-            assert_eq!(&row[(width - 1) * 4..width * 4], clean_edge);
-        }
+        assert_eq!(width, 357);
+        assert_eq!(pixels.len(), width * height * 4);
+        // Fingerprints of the original assets' first 357 columns: cropping must
+        // preserve every retained pixel instead of stretching or repeating edges.
+        assert_eq!(fingerprint(&pixels), expected_fingerprint);
     }
 }

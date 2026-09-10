@@ -7,7 +7,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- Removed the vertical artwork strip at the right edge of the synth window.
+- Removed the three-pixel strip from the full right edge of the synth window
+  by cropping the artwork and window width without stretching the remaining image.
 - Synchronized the vowel knob with the pad's vertical position in both
   directions. Horizontal pad movement continues to control pitch independently.
 

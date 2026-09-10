@@ -121,6 +121,10 @@ fn monk_static_border_aligns_with_panel_in_every_frame() {
     let artwork = Artwork::EMBEDDED;
     let sheet = decode(artwork.surface.scene.monk_sprite_sheet);
     let panel = decode(artwork.surface.control_panel);
+    let panel_width = SourceRect::CONTROL_PANEL
+        .width
+        .to_usize()
+        .expect("integer panel width");
     let monk_x = SourceRect::MONK.x.to_usize().expect("integer monk x");
     let monk_y = SourceRect::MONK.y.to_usize().expect("integer monk y");
     let panel_y = SourceRect::CONTROL_PANEL
@@ -131,7 +135,7 @@ fn monk_static_border_aligns_with_panel_in_every_frame() {
     // These fixed background/plaque pixels occur in both layers. Their
     // registration must survive every pose, not shift at the panel seam.
     for (x, y) in [(30, 290), (310, 294), (102, 299), (282, 309)] {
-        let panel_offset = ((y - panel_y) * 360 + x) * 4;
+        let panel_offset = ((y - panel_y) * panel_width + x) * 4;
         for frame in 0..30 {
             let sheet_x = (frame / 6) * 314 + x - monk_x;
             let sheet_y = (frame % 6) * 311 + y - monk_y;
@@ -158,6 +162,10 @@ fn knob_strip_background_anchors_align_with_panel_in_every_frame() {
     };
     let artwork = Artwork::EMBEDDED;
     let panel = decode(artwork.surface.control_panel);
+    let panel_width = SourceRect::CONTROL_PANEL
+        .width
+        .to_usize()
+        .expect("integer panel width");
     // Fixed background corners, outside the rotating dial, must line up with
     // the panel underneath rather than repeat it two pixels to the right.
     for (bytes, bounds, (x, y)) in [
@@ -174,7 +182,7 @@ fn knob_strip_background_anchors_align_with_panel_in_every_frame() {
             .to_usize()
             .expect("integer panel y")
             + y;
-        let panel_offset = (panel_y * 360 + panel_x) * 4;
+        let panel_offset = (panel_y * panel_width + panel_x) * 4;
         for frame in 0..60 {
             let strip_offset = ((frame * 50 + y) * 50 + x) * 4;
             assert_eq!(
@@ -182,6 +190,30 @@ fn knob_strip_background_anchors_align_with_panel_in_every_frame() {
                 &panel[panel_offset..panel_offset + 4],
                 "knob at {bounds:?}, frame {frame}",
             );
+        }
+    }
+}
+
+#[test]
+fn cropped_window_fills_its_bounds_without_shifting_controls() {
+    use super::geometry::ViewTransform;
+
+    assert_eq!(super::SIZE, (357, 510));
+    for scale in [1.0, 1.5, 2.0] {
+        let transform = ViewTransform::fit(357.0 * scale, 510.0 * scale);
+        for bounds in [SourceRect::SCENE_BACKGROUND, SourceRect::CONTROL_PANEL] {
+            let (left, _) = transform.source_to_view((bounds.x, bounds.y));
+            let (right, _) = transform.source_to_view((bounds.x + bounds.width, bounds.y));
+            assert!(left.abs() <= f32::EPSILON);
+            assert!(357.0_f32.mul_add(-scale, right).abs() <= f32::EPSILON);
+        }
+        for point in [(96.0, 362.0), (262.0, 446.0), (44.0, 473.0), (316.0, 472.0)] {
+            let view = transform.source_to_view(point);
+            assert!(point.0.mul_add(-scale, view.0).abs() <= f32::EPSILON);
+            assert!(point.1.mul_add(-scale, view.1).abs() <= f32::EPSILON);
+            let restored = transform.view_to_source(view);
+            assert!((restored.0 - point.0).abs() <= f32::EPSILON);
+            assert!((restored.1 - point.1).abs() <= f32::EPSILON);
         }
     }
 }

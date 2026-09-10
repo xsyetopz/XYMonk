@@ -3,10 +3,10 @@ use num_traits::ToPrimitive;
 
 use super::artwork::TextureSlot;
 
-/// Source artwork dimensions in logical pixels.
-pub(super) const SOURCE_SIZE: (u32, u32) = (360, 510);
+/// Visible artwork dimensions after cropping the three-pixel right border.
+pub(super) const SOURCE_SIZE: (u32, u32) = (357, 510);
 /// Width of the source artwork coordinate space.
-pub(super) const SOURCE_WIDTH: f32 = 360.0;
+pub(super) const SOURCE_WIDTH: f32 = 357.0;
 /// Height of the source artwork coordinate space.
 pub(super) const SOURCE_HEIGHT: f32 = 510.0;
 
@@ -28,7 +28,7 @@ impl SourceRect {
     pub(super) const SCENE_BACKGROUND: Self = Self {
         x: 0.0,
         y: 0.0,
-        width: 360.0,
+        width: SOURCE_WIDTH,
         height: 311.0,
     };
     /// Animated monk bounds, aligned with the static panel pixels in each frame.
@@ -42,7 +42,7 @@ impl SourceRect {
     pub(super) const CONTROL_PANEL: Self = Self {
         x: 0.0,
         y: 290.0,
-        width: 360.0,
+        width: SOURCE_WIDTH,
         height: 220.0,
     };
     /// Editor pad bounds.
