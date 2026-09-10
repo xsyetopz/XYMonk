@@ -1,6 +1,6 @@
 # Delay Lama
 
-![Delay Lama (VST3) on FL Studio 2026](image.png)
+![alt text](image.png)
 
 **Delay Lama** is a monophonic vocal synthesizer based on the AudioNerdz plug-in. Play MIDI or the XY pad: horizontal movement controls pitch; vertical movement controls vowel. Controls: Vowel, Portamento, Delay, and Voice.
 
