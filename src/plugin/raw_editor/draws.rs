@@ -11,7 +11,6 @@ pub(super) struct ControlValues {
     pub(super) vowel: f32,
     pub(super) portamento: f32,
     pub(super) delay: f32,
-    pub(super) voice: f32,
 }
 
 pub(super) fn build_draws(
@@ -84,7 +83,7 @@ fn push_controls(
     logical_size: (u32, u32),
 ) {
     let portamento_frame = frame_from_parameter(controls.portamento);
-    let voice = frame_from_parameter(controls.voice);
+    let vowel_frame = frame_from_parameter(controls.vowel);
     draws.push(quad(
         TextureSlot::PortamentoKnob,
         SourceRect::PORTAMENTO,
@@ -95,7 +94,7 @@ fn push_controls(
     draws.push(quad(
         TextureSlot::VoiceKnob,
         SourceRect::VOICE,
-        strip_uv(voice),
+        strip_uv(vowel_frame),
         transform,
         logical_size,
     ));
@@ -161,4 +160,34 @@ fn frame_from_parameter(value: f32) -> usize {
         .round()
         .to_usize()
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vowel_knob_artwork_tracks_the_vowel_range() {
+        for (vowel, frame) in [(0.0, 0), (0.5, 30), (1.0, 59)] {
+            let mut draws = Vec::new();
+            push_controls(
+                &mut draws,
+                ControlValues {
+                    vowel,
+                    portamento: 0.2,
+                    delay: 0.8,
+                },
+                ViewTransform::fit(360.0, 510.0),
+                (360, 510),
+            );
+            let knob = draws
+                .iter()
+                .find(|draw| draw.texture == TextureSlot::VoiceKnob)
+                .expect("vowel knob draw");
+            let [u, v, _, _] = strip_uv(frame);
+            for (actual, expected) in knob.vertices[0].uv.into_iter().zip([u, v]) {
+                assert!((actual - expected).abs() <= f32::EPSILON);
+            }
+        }
+    }
 }

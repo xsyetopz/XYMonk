@@ -128,13 +128,14 @@ impl Handler {
     }
 
     fn sync_control_values(&mut self) -> ControlValues {
-        let controls = ControlValues {
+        let mut controls = ControlValues {
             vowel: self.host_parameter(PluginParameter::Vowel),
             portamento: self.host_parameter(PluginParameter::Portamento),
             delay: self.host_parameter(PluginParameter::Delay),
-            voice: self.host_parameter(PluginParameter::Voice),
         };
-        if self.state.active != Some(HitTarget::Pad) {
+        if self.state.active == Some(HitTarget::Pad) {
+            controls.vowel = 1.0 - self.state.pointer.marker.1;
+        } else {
             self.state.pointer.marker.1 = 1.0 - controls.vowel;
         }
         controls
@@ -173,11 +174,13 @@ impl Handler {
                     .begin_edit(PluginParams::info(PluginParameter::Delay).id);
                 self.drag(HitTarget::Delay);
             }
+            // The original right-hand knob artwork is named Voice, but it edits
+            // the same vowel parameter as the pad. Voice remains a host parameter.
             Some(HitTarget::Voice) => {
                 self.state.active = Some(HitTarget::Voice);
-                self.state.origin = self.params.value(PluginParameter::Voice);
+                self.state.origin = self.host_parameter(PluginParameter::Vowel);
                 self.context
-                    .begin_edit(PluginParams::info(PluginParameter::Voice).id);
+                    .begin_edit(PluginParams::info(PluginParameter::Vowel).id);
             }
             Some(HitTarget::Help) => self.state.show_help = !self.state.show_help,
             None => {}
@@ -208,7 +211,7 @@ impl Handler {
                 );
                 let parameter = match target {
                     HitTarget::Portamento => PluginParameter::Portamento,
-                    HitTarget::Voice => PluginParameter::Voice,
+                    HitTarget::Voice => PluginParameter::Vowel,
                     HitTarget::Pad | HitTarget::Delay | HitTarget::Help => return,
                 };
                 self.context.set_param(
@@ -235,7 +238,7 @@ impl Handler {
         let parameter = match target {
             HitTarget::Portamento => Some(PluginParameter::Portamento),
             HitTarget::Delay => Some(PluginParameter::Delay),
-            HitTarget::Voice => Some(PluginParameter::Voice),
+            HitTarget::Voice => Some(PluginParameter::Vowel),
             HitTarget::Pad | HitTarget::Help => None,
         };
         if let Some(parameter) = parameter {

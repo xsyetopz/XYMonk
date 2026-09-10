@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use crossbeam_queue::ArrayQueue;
 use truce::core::editor::ClosureBridge;
@@ -22,6 +25,8 @@ fn test_context(
     events: Arc<ArrayQueue<HostEdit>>,
     host_values: [f64; 4],
 ) -> PluginContext<PluginParams> {
+    let host_values = Arc::new(host_values.map(|value| AtomicU64::new(value.to_bits())));
+    let edited_values = Arc::clone(&host_values);
     let begin_events = Arc::clone(&events);
     let set_events = Arc::clone(&events);
     let end_events = events;
@@ -32,12 +37,16 @@ fn test_context(
             begin_edit: Box::new(move |id| record(&begin_events, HostEdit::Begin(id))),
             set_param: Box::new(move |id, value| {
                 record(&set_events, HostEdit::Set(id, value.to_bits()));
+                if let Some(parameter) = PluginParameter::from_id(id) {
+                    edited_values[parameter.index()].store(value.to_bits(), Ordering::Relaxed);
+                }
             }),
             end_edit: Box::new(move |id| record(&end_events, HostEdit::End(id))),
             request_resize: Box::new(|_, _| false),
             get_param: Box::new(move |id| {
                 PluginParameter::from_id(id)
-                    .and_then(|parameter| host_values.get(parameter.index()).copied())
+                    .and_then(|parameter| host_values.get(parameter.index()))
+                    .map(|value| f64::from_bits(value.load(Ordering::Relaxed)))
                     .unwrap_or_default()
             }),
             get_param_plain: Box::new(|_| 0.0),
@@ -113,14 +122,14 @@ fn host_parameters_drive_control_assets_and_idle_vowel_marker() {
             vowel: 0.75,
             portamento: 0.2,
             delay: 0.3,
-            voice: 0.9,
         }
     );
     assert!((handler.state.pointer.marker.1 - 0.25).abs() <= f32::EPSILON);
 
     handler.state.active = Some(HitTarget::Pad);
     handler.state.pointer.marker.1 = 0.6;
-    handler.sync_control_values();
+    let controls = handler.sync_control_values();
+    assert!((controls.vowel - 0.4).abs() <= f32::EPSILON);
     assert!((handler.state.pointer.marker.1 - 0.6).abs() <= f32::EPSILON);
 }
 
@@ -154,4 +163,50 @@ fn touch_cancellation_and_close_release_the_pad_once() {
         1
     );
     assert!(handler.state.active.is_none());
+}
+
+#[test]
+fn vowel_knob_and_pad_follow_each_other_in_both_directions() {
+    let params = Arc::new(PluginParams::new());
+    let events = Arc::new(ArrayQueue::new(16));
+    let context = test_context(
+        Arc::clone(&params),
+        Arc::clone(&events),
+        [0.75, 0.2, 0.3, 0.9],
+    );
+    let mut handler = Handler::new(None, Arc::clone(&params), context, (360, 510));
+
+    handler.pointer(super::PointerPhase::Down, (316.0, 472.0));
+    handler.pointer(super::PointerPhase::Drag, (316.0, 409.5));
+    handler.pointer(super::PointerPhase::Up, (316.0, 409.5));
+    let controls = handler.sync_control_values();
+    assert!((controls.vowel - 1.0).abs() <= f32::EPSILON);
+    assert!((handler.state.pointer.marker.1 - 0.0).abs() <= f32::EPSILON);
+    assert!(
+        params.editor.pop().is_none(),
+        "knob must not start a pad note"
+    );
+
+    handler.pointer(super::PointerPhase::Down, (179.0, 425.0));
+    assert!((handler.sync_control_values().vowel - 0.25).abs() <= f32::EPSILON);
+    handler.pointer(super::PointerPhase::Drag, (179.0, 383.0));
+    assert!((handler.sync_control_values().vowel - 0.75).abs() <= f32::EPSILON);
+    handler.pointer(super::PointerPhase::Up, (179.0, 383.0));
+    assert!((handler.sync_control_values().vowel - 0.75).abs() <= f32::EPSILON);
+    assert!((handler.state.pointer.marker.1 - 0.25).abs() <= f32::EPSILON);
+
+    let vowel_id = PluginParameter::Vowel.id();
+    let edits: Vec<_> = std::iter::from_fn(|| events.pop()).collect();
+    assert_eq!(
+        edits,
+        [
+            HostEdit::Begin(vowel_id),
+            HostEdit::Set(vowel_id, 1.0_f64.to_bits()),
+            HostEdit::End(vowel_id),
+            HostEdit::Begin(vowel_id),
+            HostEdit::Set(vowel_id, 0.25_f64.to_bits()),
+            HostEdit::Set(vowel_id, 0.75_f64.to_bits()),
+            HostEdit::End(vowel_id),
+        ]
+    );
 }
